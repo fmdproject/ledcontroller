@@ -8,50 +8,118 @@ module brainBlock(
 	output reg led2
 );
 
-	reg [7:0] charRec;
-	reg [7:0] i;
+	reg [7:0] byteBuffer [31:0];
+	reg [7:0] newByte;
+	reg [7:0] bitCount;
+	reg [7:0] byteCount;
 
-	task automatic interpret(ref reg [7:0] newChar,
-							 ref reg ledOut1,
-							 ref reg ledOut2);
 
-		string letters = "ABC";
+	function automatic void clearBuffer32(ref reg [7:0] buff [31:0]);
 
-		if(newChar == letters.getc(0))
+		for(reg [7:0] i = 8'd0; i < 8'd32; i = i + 8'd1)
 		begin
-			ledOut1 = 1'b0;
-			ledOut2 = 1'b1;
+			buff[i] = 8'd0;
 		end
-		else if(newChar == letters.getc(1))
+	endfunction
+
+	function automatic reg [7:0] indexOf32(reg [7:0] buff [31:0],string searchStr);
+
+		if(searchStr.len() < 8'd33)
 		begin
-			ledOut1 = 1'b1;
-			ledOut2 = 1'b0;
+			reg [7:0] indexFound;
+			reg [7:0] strLength = searchStr.len();
+			reg [7:0] searchLimit = 8'd33 - strLength;
+			reg [7:0] j;
+			reg found;
+
+			for(indexFound = 8'd0; indexFound < searchLimit; indexFound += 8'd1)
+			begin
+				if(buff[indexFound] == searchStr.getc(8'd0))
+				begin
+					found = 1'b1;
+
+					for(j = 8'd0; j < strLength; j += 8'd1)
+					begin
+						if(buff[indexFound + j] != searchStr.getc(j))
+						begin
+							found = 1'b0;
+							break;
+						end
+					end
+
+					if(found)
+					begin
+						return indexFound;
+					end
+				end
+			end
+
+			return 8'd255;
 		end
 		else
 		begin
-			ledOut1 = 1'b1;
-			ledOut2 = 1'b1;
+			return 8'd255;
 		end
-	endtask
+	endfunction
 
 	initial begin
-		charRec = 8'd0;
+		clearBuffer32(byteBuffer);
+		bitCount = 8'd0;
+		byteCount = 8'd0;
+		newByte = 8'd0;
 		led1 = 1'b1;
 		led2 = 1'b1;
 	end
 
 	always @(posedge readFlag)
 	begin
-		charRec = charRec<<4;
-		charRec = charRec + dataIn;
 
-		i = i + 8'd1;
-
-		if(i > 8'd1)
+		newByte = newByte << 4;
+		newByte = newByte + dataIn;
+		
+		bitCount += 8'd4;
+		
+		if(bitCount > 8'd4)
 		begin
-			interpret(charRec,led1,led2);
-			i = 8'd0;
-			charRec = 8'd0;
+			bitCount = 8'd0;
+
+			byteBuffer[byteCount] = newByte;
+			
+			byteCount += 8'd1;
+			byteCount = (byteCount > 8'd31)? 8'd31 : byteCount;
+
+			//start flag shuts down on the last byte 
+			//signaling to the fpga that after getting the last byte
+			//the interpretation of the hole buffer should begin
+			if(~startFlag)
+			begin
+
+				if(indexOf32(byteBuffer,"turnOn(") == 8'd0)
+				begin
+					if(indexOf32(byteBuffer,"98") != 8'd255)
+					begin
+						led1 = 1'b0;
+					end
+					else if(indexOf32(byteBuffer,"87") != 8'd255)
+					begin
+						led2 = 1'b0;
+					end
+				end
+				else if(indexOf32(byteBuffer,"turnOff(") == 8'd0)
+				begin
+					if(indexOf32(byteBuffer,"98") != 8'd255)
+					begin
+						led1 = 1'b1;
+					end
+					else if(indexOf32(byteBuffer,"87") != 8'd255)
+					begin
+						led2 = 1'b1;
+					end
+				end
+
+				byteCount = 8'd0;
+				clearBuffer32(byteBuffer);
+			end
 		end
 	end
 endmodule

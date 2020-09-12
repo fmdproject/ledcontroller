@@ -2,12 +2,14 @@
 byte bMask  = B00111111;
 byte bRead  = B00110000;
 byte bClear = B00000000;
+byte bOn    = B00100000;
 
 String textReceived = "";
 byte fromHere = 0;
 byte toHere = 0;
 byte number = 0;
 byte newByte;
+int lengthM1;
 
 void setup()
 {
@@ -32,36 +34,18 @@ void interpret()
 {
     Serial.println(textReceived);
 
-    if(textReceived.indexOf("setB(") == 0)
+    if(textReceived.indexOf("turn") == 0)
     {
-        fromHere = textReceived.indexOf("(") + 1;
-        toHere = textReceived.indexOf(")");
-        number = textReceived.substring(fromHere,toHere).toInt();
-        number = (number > 15)? 15 : number;
-        PORTB = bClear;
-
-        //this step is needed to set the values
-        //for the fpga to read them correctly
-        PORTB = number;
-        
-        //this step triggers the processing within the fpga
-        PORTB = number | bRead;
-        Serial.println("OK");
-    }
-    else if(textReceived.indexOf("send(") == 0)
-    {
-        fromHere = textReceived.indexOf("(") + 1;
-        toHere = textReceived.indexOf(")");
-        textReceived = textReceived.substring(fromHere,toHere);
-
         byte newByteArray[textReceived.length() + 1];
         textReceived.getBytes(newByteArray,textReceived.length() + 1);
 
-        for(int i = 0; i < textReceived.length(); i++)
+        lengthM1 = textReceived.length() - 1;
+
+        for(int i = 0; i < lengthM1; i++)
         {
-            PORTB = bClear;
+            PORTB = bOn;
             
-            newByte = newByteArray[i] >> 4;
+            newByte = bOn | (newByteArray[i] >> 4);
 
             //this step is sets the values of half of the byte
             PORTB = newByte;
@@ -69,15 +53,37 @@ void interpret()
             //this step triggers the processing within the fpga
             PORTB = newByte | bRead;
 
-            PORTB = bClear;
+            PORTB = bOn;
 
-            newByte = newByteArray[i] & B00001111;
+            newByte = bOn | (newByteArray[i] & B00001111);
 
             //this step is sets the values of the other half of the byte
             PORTB = newByte;
             
             PORTB = newByte | bRead;
         }
+        
+        PORTB = bOn;
+            
+        newByte = bOn | (newByteArray[lengthM1] >> 4);
+
+        //this step is sets the values of half of the byte
+        PORTB = newByte;
+
+        //this step triggers the processing within the fpga
+        PORTB = newByte | bRead;
+
+        PORTB = bClear;
+
+        newByte = newByteArray[lengthM1] & B00001111;
+
+        //this step is sets the values of the other half of the byte
+        PORTB = newByte;
+            
+        PORTB = newByte | bRead;
+
+        PORTB = bClear;
+
         Serial.println("OK");
     }
     else
